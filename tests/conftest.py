@@ -60,15 +60,16 @@ def rendering_stubs(monkeypatch: pytest.MonkeyPatch) -> RenderingStubs:
         return fn(*args, **kwargs)
 
     monkeypatch.setattr(engine, "_generate", dispatch, raising=True)
-    # raising=False: plan 01 has not created these yet. Plan 02 flips both to
-    # raising=True once they exist, so a later rename cannot silently unmask
-    # the real functions.
-    monkeypatch.setattr(engine, "preflight", lambda device=None: "cuda", raising=False)
+    # raising=True now that both names exist. raising=False was right while
+    # plan 01 had not created them, but it never tightens on its own: leave it
+    # and a later rename silently stubs a dead attribute while `render` calls
+    # the real function and reaches for a 22.4 GB download.
+    monkeypatch.setattr(engine, "preflight", lambda device=None: "cuda", raising=True)
     monkeypatch.setattr(
         engine,
         "ensure_checkpoints",
         lambda cache_dir=None: Path("/nonexistent/ckpt"),
-        raising=False,
+        raising=True,
     )
     return handle
 
