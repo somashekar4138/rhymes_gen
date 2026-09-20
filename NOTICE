@@ -1,0 +1,25 @@
+rhymes
+Copyright 2026 the rhymes authors
+
+Licensed under the Apache License, Version 2.0.
+
+--------------------------------------------------------------------------------
+
+This product depends on HeartMuLa's heartlib, which does the actual singing.
+
+    heartlib - a family of open sourced music foundation models
+    https://github.com/HeartMuLa/heartlib
+    Copyright MuLa Labs
+    Licensed under the Apache License, Version 2.0
+
+The model checkpoints this tool downloads are published by the same authors
+under the same licence:
+
+    HeartMuLa/HeartMuLaGen
+    HeartMuLa/HeartMuLa-oss-3B-happy-new-year
+    HeartMuLa/HeartCodec-oss-20260123
+
+If you use this for research, cite their paper:
+
+    Yang et al., "HeartMuLa: A Family of Open Sourced Music Foundation Models",
+    arXiv:2601.10547, 2026.

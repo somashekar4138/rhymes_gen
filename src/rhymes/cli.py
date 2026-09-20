@@ -104,7 +104,32 @@ def _positive_int(value: str) -> int:
     return parsed
 
 
+MIN_PYTHON = (3, 10)
+MAX_PYTHON = (3, 12)
+
+
+def _check_interpreter(version: tuple[int, int]) -> None:
+    """Refuse an unsupported interpreter, naming the actual cause.
+
+    Takes the version as a parameter so it is testable without a second
+    interpreter. A user who knows why can decide what to do; one who does not
+    files an issue.
+    """
+    if MIN_PYTHON <= version <= MAX_PYTHON:
+        return
+    raise RuntimeError(
+        f"Python {version[0]}.{version[1]} is not supported. rhymes needs "
+        f"{MIN_PYTHON[0]}.{MIN_PYTHON[1]}-{MAX_PYTHON[0]}.{MAX_PYTHON[1]} because heartlib "
+        "hard-pins numpy==2.0.2, which publishes no wheel for 3.13 or newer."
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
+    try:
+        _check_interpreter(sys.version_info[:2])
+    except RuntimeError as exc:
+        return _fail(exc)
+
     args = build_parser().parse_args(argv)
     if args.command == "styles":
         return _cmd_styles()
