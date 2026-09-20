@@ -39,7 +39,12 @@ def rendering_stubs(monkeypatch: pytest.MonkeyPatch) -> RenderingStubs:
     handle = RenderingStubs()
 
     def default_generate(
-        ckpt_root: Path, lyrics_path: Path, tags_path: Path, tmp_out: Path, req: object
+        ckpt_root: Path,
+        lyrics_path: Path,
+        tags_path: Path,
+        tmp_out: Path,
+        req: object,
+        device: str = "cuda",
     ) -> None:
         handle.calls.append(
             {
@@ -48,6 +53,7 @@ def rendering_stubs(monkeypatch: pytest.MonkeyPatch) -> RenderingStubs:
                 "tags_path": tags_path,
                 "tmp_out": tmp_out,
                 "req": req,
+                "device": device,
             }
         )
         tmp_out.write_bytes(b"ID3")

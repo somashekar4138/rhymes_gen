@@ -109,3 +109,13 @@ def test_parse_lyrics_round_trips_through_to_text() -> None:
 
     assert isinstance(parsed, Lyrics)
     assert parse_lyrics(parsed.to_text()) == parsed
+
+
+def test_whitespace_only_bracket_is_not_a_header(tmp_path: Path) -> None:
+    """R-4: '[ ]' is length 3 so it passed the `len > 2` guard, then stripped to
+    an empty section name that nothing rejected -- and `to_text()` re-emitted it
+    as '[]', which no longer re-parses."""
+    with pytest.raises(LyricsError) as exc:
+        load_lyrics(write(tmp_path, "[ ]\nHello there\n"))
+
+    assert "line 1" in str(exc.value)

@@ -8,10 +8,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from conftest import RenderingStubs
 
 from rhymes import cli
 from rhymes.styles import PRESETS
-from tests.conftest import RenderingStubs
 
 
 @pytest.fixture
@@ -189,3 +189,13 @@ def test_successful_render_prints_the_output_path(
 
     assert rc == 0
     assert str(valid_lyrics_file.with_suffix(".mp3")) in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("flag", ["--temperature", "--cfg-scale"])
+def test_nan_sampling_parameters_are_usage_errors(valid_lyrics_file: Path, flag: str) -> None:
+    """R-2: float('nan') does not raise, and IEEE-754 makes `nan <= 0` false, so
+    NaN slipped past the positivity guard as if it were positive."""
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["render", str(valid_lyrics_file), flag, "nan"])
+
+    assert exc.value.code == 2

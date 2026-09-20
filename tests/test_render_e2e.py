@@ -9,9 +9,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from conftest import RenderingStubs
 
 from rhymes import cli
-from tests.conftest import RenderingStubs
 
 
 def test_render_writes_mp3_beside_the_input(
@@ -43,7 +43,7 @@ def test_failed_generation_leaves_nothing_at_the_target(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    def boom(ckpt_root, lyrics_path, tags_path, tmp_out, req):
+    def boom(ckpt_root, lyrics_path, tags_path, tmp_out, req, device):
         raise RuntimeError("generation exploded")
 
     rendering_stubs.set_generate(boom)

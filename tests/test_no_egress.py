@@ -79,3 +79,24 @@ def test_downloads_carry_only_checkpoint_repo_ids_never_lyrics(
     for call in download_recorder:
         assert call["repo_id"] in allowed
         assert "lyrics" not in str(call).lower()
+
+
+def test_only_snapshot_download_is_used_from_huggingface_hub() -> None:
+    """R-5: proving huggingface_hub is the only network-capable import does not
+    constrain WHAT is called on it. The library also exposes uploads, repo
+    creation and InferenceClient -- any of which would pass the import check
+    while being exactly the egress the prohibition exists to stop."""
+    used: set[str] = set()
+    for path in sorted(SRC.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module == "huggingface_hub":
+                used.update(alias.name for alias in node.names)
+            elif (
+                isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Name)
+                and node.value.id == "huggingface_hub"
+            ):
+                used.add(node.attr)
+
+    assert used == {"snapshot_download"}

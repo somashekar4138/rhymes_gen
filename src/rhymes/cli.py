@@ -89,8 +89,10 @@ def _positive_float(value: str) -> float:
         parsed = float(value)
     except ValueError:
         raise argparse.ArgumentTypeError(f"{value!r} is not a number") from None
-    if parsed <= 0:
-        raise argparse.ArgumentTypeError(f"must be greater than 0, got {parsed}")
+    # `not parsed > 0`, not `parsed <= 0`: IEEE-754 makes every comparison with
+    # NaN false, so `nan <= 0` is False and NaN would sail through as positive.
+    if not parsed > 0:
+        raise argparse.ArgumentTypeError(f"must be a number greater than 0, got {value!r}")
     return parsed
 
 
@@ -177,7 +179,10 @@ def _cmd_render(args: argparse.Namespace) -> int:
 
 
 def _fail(message: object) -> int:
-    print(f"rhymes: {message}", file=sys.stderr)
+    # One line, always. CUDA OOM and HfHubHTTPError response bodies are
+    # routinely multi-line, and the contract is a single actionable line.
+    lines = str(message).splitlines() or [""]
+    print(f"rhymes: {lines[0]}", file=sys.stderr)
     return 1
 
 

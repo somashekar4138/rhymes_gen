@@ -97,8 +97,12 @@ def parse_lyrics(text: str) -> Lyrics:
 
 
 def _header(stripped: str) -> str | None:
-    if stripped.startswith("[") and stripped.endswith("]") and len(stripped) > 2:
-        return stripped[1:-1].strip()
+    if stripped.startswith("[") and stripped.endswith("]"):
+        # `or None` rejects `[]` and `[ ]` alike. Guarding on length instead let
+        # a whitespace-only bracket through as a section with an empty name,
+        # which `to_text()` then re-emitted as `[]` -- a shape that no longer
+        # parses, breaking the round-trip every other input satisfies.
+        return stripped[1:-1].strip() or None
     return None
 
 

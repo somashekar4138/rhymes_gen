@@ -11,6 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from conftest import RenderingStubs
 
 from rhymes import cli, engine
 
@@ -172,7 +173,7 @@ def fake_heartlib(monkeypatch: pytest.MonkeyPatch):
             Path(kwargs["save_path"]).write_bytes(b"ID3fake")
 
     mod = types.ModuleType("heartlib")
-    mod.HeartMuLaGenPipeline = FakePipeline
+    mod.HeartMuLaGenPipeline = FakePipeline  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "heartlib", mod)
     return record
 
@@ -280,3 +281,100 @@ def test_heartlib_not_installed_names_the_gpu_extra(
 
     assert "heartlib" in str(exc.value)
     assert "gpu" in str(exc.value)
+
+
+# --- Stage 9 fixes: failures that reached the user as tracebacks ------------
+
+
+def test_output_path_that_is_a_directory_exits_1_not_a_traceback(
+    rendering_stubs: RenderingStubs,
+    valid_lyrics_file: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """R-1: os.replace sat outside render's try, so IsADirectoryError escaped
+    the CLI seam as a traceback."""
+    target = tmp_path / "a_directory"
+    target.mkdir()
+
+    rc = cli.main(["render", str(valid_lyrics_file), "-o", str(target)])
+
+    err = capsys.readouterr().err
+    assert rc == 1
+    assert "Traceback" not in err
+    assert len(err.strip().splitlines()) == 1
+
+
+def test_checkpoint_download_failure_exits_1_not_a_traceback(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_torch,
+    valid_lyrics_file: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """R-1: a 22.4 GB download on a flaky Colab session raises OSError, which
+    is not an EngineError."""
+    fake_torch(cuda_available=True)
+
+    def out_of_space(cache_dir: Path | None = None) -> Path:
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(engine, "ensure_checkpoints", out_of_space, raising=True)
+
+    rc = cli.main(["render", str(valid_lyrics_file)])
+
+    err = capsys.readouterr().err
+    assert rc == 1
+    assert "Traceback" not in err
+
+
+def test_a_multiline_failure_is_collapsed_to_one_stderr_line(
+    rendering_stubs: RenderingStubs,
+    valid_lyrics_file: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """R-1b: CUDA OOM and HfHubHTTPError bodies are routinely multi-line."""
+
+    def boom(ckpt_root, lyrics_path, tags_path, tmp_out, req, device):
+        raise RuntimeError("CUDA out of memory.\nTried to allocate 2.00 GiB\nSee docs.")
+
+    rendering_stubs.set_generate(boom)
+
+    rc = cli.main(["render", str(valid_lyrics_file)])
+
+    err = capsys.readouterr().err
+    assert rc == 1
+    assert len(err.strip().splitlines()) == 1
+
+
+def test_preflight_runs_once_per_render(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_torch,
+    download_recorder: list[dict],
+    fake_heartlib: dict,
+    tmp_path: Path,
+) -> None:
+    """R-3: render and _generate each resolved the device, so a --device cpu
+    run printed the unsupported-escape-hatch warning twice."""
+    fake_torch(cuda_available=True)
+    calls: list[object] = []
+    real = engine.preflight
+
+    def counting(device: str | None = None) -> str:
+        calls.append(device)
+        return real(device)
+
+    monkeypatch.setattr(engine, "preflight", counting, raising=True)
+
+    engine.render(
+        engine.RenderRequest(
+            lyrics_text="[Verse]\nhello\n",
+            tags="piano",
+            out_path=tmp_path / "s.mp3",
+            seconds=10,
+            temperature=0.9,
+            topk=50,
+            cfg_scale=1.5,
+        )
+    )
+
+    assert len(calls) == 1

@@ -122,31 +122,39 @@ def render(req: RenderRequest) -> Path:
     rather than a half-written mp3.
     """
     out_path = req.out_path
-    out_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Ordering is the requirement, not an optimization: a user on a laptop
     # should be told to go to Colab in a second, not after 22.4 GB of download.
-    preflight(req.device)
-    ckpt_root = ensure_checkpoints()
-    with tempfile.TemporaryDirectory(dir=out_path.parent) as work:
-        workdir = Path(work)
-        lyrics_path = workdir / "lyrics.txt"
-        tags_path = workdir / "tags.txt"
-        # The upstream pipeline takes file *paths*, not strings.
-        lyrics_path.write_text(req.lyrics_text, encoding="utf-8")
-        tags_path.write_text(req.tags, encoding="utf-8")
-        tmp_out = workdir / "out.mp3"
+    # Resolved ONCE and handed down: resolving it again inside `_generate`
+    # printed the unsupported-escape-hatch warning twice per run.
+    device = preflight(req.device)
 
-        try:
-            _generate(ckpt_root, lyrics_path, tags_path, tmp_out, req)
-        except EngineError:
-            raise
-        except Exception as exc:
-            raise EngineError(f"generation failed: {exc}") from exc
+    # Everything below sits inside one guard on purpose. `render` promises the
+    # CLI that it raises EngineError and nothing else, and the CLI seam catches
+    # exactly that. An OSError from mkdir, a transport error or a full disk
+    # during a 22.4 GB download, or an IsADirectoryError from os.replace when
+    # -o names a directory would otherwise reach the user as a traceback.
+    try:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        ckpt_root = ensure_checkpoints()
+        with tempfile.TemporaryDirectory(dir=out_path.parent) as work:
+            workdir = Path(work)
+            lyrics_path = workdir / "lyrics.txt"
+            tags_path = workdir / "tags.txt"
+            # The upstream pipeline takes file *paths*, not strings.
+            lyrics_path.write_text(req.lyrics_text, encoding="utf-8")
+            tags_path.write_text(req.tags, encoding="utf-8")
+            tmp_out = workdir / "out.mp3"
 
-        if not tmp_out.exists():
-            raise EngineError("generation produced no audio")
-        os.replace(tmp_out, out_path)
+            _generate(ckpt_root, lyrics_path, tags_path, tmp_out, req, device)
+
+            if not tmp_out.exists():
+                raise EngineError("generation produced no audio")
+            os.replace(tmp_out, out_path)
+    except EngineError:
+        raise
+    except Exception as exc:
+        raise EngineError(f"generation failed: {exc}") from exc
 
     return out_path
 
@@ -157,6 +165,7 @@ def _generate(
     tags_path: Path,
     tmp_out: Path,
     req: RenderRequest,
+    device: str,
 ) -> None:
     """The single seam the test suite mocks.
 
@@ -174,10 +183,11 @@ def _generate(
             f'git+https://github.com/somashekar4138/rhymes_gen" ({exc})'
         ) from exc
 
-    device = torch.device(preflight(req.device))
+    # `device` is resolved by `render` and handed down, not re-resolved here.
+    torch_device = torch.device(device)
     pipe = HeartMuLaGenPipeline.from_pretrained(
         ckpt_root,
-        device={"mula": device, "codec": device},
+        device={"mula": torch_device, "codec": torch_device},
         dtype={"mula": torch.bfloat16, "codec": torch.float32},
         version="3B",
         lazy_load=True,

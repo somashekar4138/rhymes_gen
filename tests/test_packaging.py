@@ -33,7 +33,7 @@ def test_unsupported_interpreter_is_refused_with_the_reason(version: tuple[int, 
 
 @pytest.mark.parametrize("version", [(3, 10), (3, 11), (3, 12)])
 def test_supported_interpreters_pass(version: tuple[int, int]) -> None:
-    assert cli._check_interpreter(version) is None
+    cli._check_interpreter(version)  # must not raise
 
 
 def test_interpreter_failure_renders_as_exit_1_not_a_traceback(
