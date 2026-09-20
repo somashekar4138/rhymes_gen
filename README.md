@@ -29,7 +29,7 @@ datacenter GPU; expect many multiples of that anywhere else.
 
 ## Writing lyrics
 
-Bracketed section headers, plain lines underneath. This is the format the model expects:
+Section headers, plain lines underneath:
 
 ```
 [Verse]
@@ -40,6 +40,18 @@ How I wonder what you are
 Up above the world so high
 Like a diamond in the sky
 ```
+
+Markdown headers work too, since that is what you get when you draft lyrics in a chat or
+an editor — `**Verse**`, `__Verse__` and `## Verse` are all read as headers. A line is
+only treated as a header if the whole line matches, so `I **really** like bananas` stays
+a lyric.
+
+The model knows six section names: **Intro, Verse, Prechorus, Chorus, Bridge, Outro**.
+Anything else (`[Verse 1]`, `[Dance Break]`) still renders, but reaches the model as raw
+text and may not land — you get a one-line note on stderr when that happens.
+
+Emoji are not singable. They are passed through untouched rather than stripped, because
+the tool never edits your words, but you probably want them out of the lyrics.
 
 Anything malformed is rejected before the model loads, with the offending line number.
 

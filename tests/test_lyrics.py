@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from rhymes.lyrics import Lyrics, LyricsError, load_lyrics, parse_lyrics
+from rhymes.lyrics import Lyrics, LyricsError, load_lyrics, parse_lyrics, unknown_sections
 
 
 def write(tmp_path: Path, content: str | bytes, name: str = "r.txt") -> Path:
@@ -119,3 +119,61 @@ def test_whitespace_only_bracket_is_not_a_header(tmp_path: Path) -> None:
         load_lyrics(write(tmp_path, "[ ]\nHello there\n"))
 
     assert "line 1" in str(exc.value)
+
+
+# --- Markdown-style headers -------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "header,expected",
+    [
+        ("[Verse]", "Verse"),
+        ("**Verse**", "Verse"),
+        ("**Verse 1**", "Verse 1"),
+        ("  **Chorus**  ", "Chorus"),
+        ("## Verse", "Verse"),
+        ("### Dance Break", "Dance Break"),
+        ("__Bridge__", "Bridge"),
+    ],
+)
+def test_markdown_headers_are_accepted(tmp_path: Path, header: str, expected: str) -> None:
+    """People draft lyrics in chats and editors, where a section header comes out
+    as **Verse 1**, not [Verse]. Rejecting that was a guaranteed papercut."""
+    lyrics = load_lyrics(write(tmp_path, f"{header}\nA line of song\n"))
+
+    assert [s.name for s in lyrics.sections] == [expected]
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "I **really** like bananas",
+        "**bold at the start** then more text",
+        "**",
+        "****",
+        "#not a heading",
+        "[]",
+        "[ ]",
+    ],
+)
+def test_these_are_body_lines_not_headers(tmp_path: Path, line: str) -> None:
+    lyrics = load_lyrics(write(tmp_path, f"[Verse]\n{line}\n"))
+
+    assert [s.name for s in lyrics.sections] == ["Verse"]
+    assert lyrics.sections[0].lines == (line,)
+
+
+def test_unknown_sections_are_reported_not_rejected(tmp_path: Path) -> None:
+    """HeartMuLa documents Intro/Verse/Prechorus/Chorus/Bridge/Outro. Anything
+    else still renders, but the user should be told it may not land."""
+    content = "**Verse 1**\na\n\n**Dance Break**\nb\n\n**Chorus**\nc\n"
+
+    lyrics = load_lyrics(write(tmp_path, content))
+
+    assert unknown_sections(lyrics) == ["Verse 1", "Dance Break"]
+
+
+def test_standard_sections_report_nothing(tmp_path: Path) -> None:
+    lyrics = load_lyrics(write(tmp_path, "[Intro]\na\n\n[chorus]\nb\n\n[OUTRO]\nc\n"))
+
+    assert unknown_sections(lyrics) == []

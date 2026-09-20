@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 from rhymes import styles
-from rhymes.lyrics import LyricsError, load_lyrics
+from rhymes.lyrics import KNOWN_SECTIONS, LyricsError, load_lyrics, unknown_sections
 from rhymes.styles import StyleError
 
 DEFAULT_SECONDS = 60
@@ -155,6 +155,18 @@ def _cmd_render(args: argparse.Namespace) -> int:
         return _fail(exc)
     except OSError as exc:
         return _fail(f"cannot read {args.lyrics}: {exc.strerror or exc}")
+
+    # Not a failure: the user's structure is theirs. But a section name the
+    # model has never seen reaches it as raw text, and silently producing a
+    # worse song is the unhelpful outcome here.
+    odd = unknown_sections(lyrics)
+    if odd:
+        print(
+            f"rhymes: note - {', '.join(odd)} "
+            f"{'is' if len(odd) == 1 else 'are'} not among the sections HeartMuLa knows "
+            f"({', '.join(KNOWN_SECTIONS)}). Rendering anyway.",
+            file=sys.stderr,
+        )
 
     # Only now, once nothing cheap can still fail, does the heavy module load.
     from rhymes import engine

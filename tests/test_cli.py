@@ -199,3 +199,26 @@ def test_nan_sampling_parameters_are_usage_errors(valid_lyrics_file: Path, flag:
         cli.main(["render", str(valid_lyrics_file), flag, "nan"])
 
     assert exc.value.code == 2
+
+
+def test_unknown_section_names_warn_but_still_render(
+    rendering_stubs: RenderingStubs, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    lyrics = tmp_path / "md.txt"
+    lyrics.write_text("**Verse 1**\na line\n\n**Dance Break**\nanother\n", encoding="utf-8")
+
+    rc = cli.main(["render", str(lyrics)])
+
+    err = capsys.readouterr().err
+    assert rc == 0
+    assert "Verse 1" in err and "Dance Break" in err
+    assert "Bridge" in err  # names the vocabulary the model does know
+
+
+def test_standard_section_names_produce_no_warning(
+    rendering_stubs: RenderingStubs, valid_lyrics_file: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rc = cli.main(["render", str(valid_lyrics_file)])
+
+    assert rc == 0
+    assert capsys.readouterr().err == ""

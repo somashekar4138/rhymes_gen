@@ -15,3 +15,7 @@ ckpt/
 # Forge chain state: kept local, not published.
 .planning/
 TODOS.md
+
+# Your own lyrics drafts.
+twinkle.txt
+banana_band.txt

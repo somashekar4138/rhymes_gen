@@ -5,16 +5,37 @@ global state. This is the layer that lets a malformed file be rejected in under
 a second instead of after a multi-minute model load, which is the whole of
 SPEC R3.
 
-The only transformations permitted here are the three declared ones -- BOM
-strip, newline normalization, and trimming trailing whitespace from a line.
-Anything further would silently alter the user's lyrics, which the prohibition
-forbids and `test_body_text_survives_parsing_verbatim` catches.
+Section headers may be bracketed (`[Verse]`) or Markdown (`**Verse 1**`,
+`## Verse`), because that is what a chat or an editor actually produces. A
+header is recognised only when the pattern matches the whole line, so
+"I **really** like bananas" stays a lyric.
+
+Body text is never touched. The only transformations permitted here are the
+three declared ones -- BOM strip, newline normalization, and trimming trailing
+whitespace from a line. Anything further would silently alter the user's
+lyrics, which the prohibition forbids and
+`test_body_text_survives_parsing_verbatim` catches.
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
+
+# The section names HeartMuLa documents. Anything else still renders -- the user
+# writes the song, not us -- but `unknown_sections` surfaces it so the CLI can
+# say so rather than let a mystery reach the model.
+KNOWN_SECTIONS = ("Intro", "Verse", "Prechorus", "Chorus", "Bridge", "Outro")
+
+# A header may arrive bracketed, or as the Markdown a chat or editor produces.
+# Each pattern must match the WHOLE line: "I **really** like bananas" is a lyric.
+_HEADER_PATTERNS = (
+    re.compile(r"\[(.+)\]"),  # [Verse]
+    re.compile(r"\*\*(.+?)\*\*"),  # **Verse 1**
+    re.compile(r"__(.+?)__"),  # __Bridge__
+    re.compile(r"#{1,6}\s+(.+)"),  # ## Verse
+)
 
 
 class LyricsError(ValueError):
@@ -97,13 +118,31 @@ def parse_lyrics(text: str) -> Lyrics:
 
 
 def _header(stripped: str) -> str | None:
-    if stripped.startswith("[") and stripped.endswith("]"):
-        # `or None` rejects `[]` and `[ ]` alike. Guarding on length instead let
-        # a whitespace-only bracket through as a section with an empty name,
-        # which `to_text()` then re-emitted as `[]` -- a shape that no longer
-        # parses, breaking the round-trip every other input satisfies.
-        return stripped[1:-1].strip() or None
+    """Return the section name if this whole line is a header, else None."""
+    for pattern in _HEADER_PATTERNS:
+        match = pattern.fullmatch(stripped)
+        if match:
+            # `or None` rejects `[]`, `[ ]` and `****` alike. Guarding on length
+            # instead let a whitespace-only bracket through as a section with an
+            # empty name, which `to_text()` re-emitted as `[]` -- a shape that no
+            # longer parses, breaking the round-trip every other input satisfies.
+            return match.group(1).strip() or None
     return None
+
+
+def unknown_sections(lyrics: Lyrics) -> list[str]:
+    """Section names outside the vocabulary HeartMuLa documents, in order.
+
+    Not an error: the user's structure is theirs. The CLI reports these so a
+    `[Dance Break]` reaching the model as raw text is a known choice rather than
+    a silent one.
+    """
+    known = {name.lower() for name in KNOWN_SECTIONS}
+    seen: list[str] = []
+    for section in lyrics.sections:
+        if section.name.lower() not in known and section.name not in seen:
+            seen.append(section.name)
+    return seen
 
 
 def _require_body(name: str, lines: list[str]) -> None:
