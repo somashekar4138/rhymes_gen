@@ -1,7 +1,12 @@
 """argparse adapter. Owns exit codes and stderr formatting, nothing else.
 
 Exit codes: 0 success, 1 runtime or validation failure (one stderr line, no
-traceback), 2 usage error (argparse's own convention).
+traceback), 2 usage error -- argparse's own convention, which is why the
+range and mutual-exclusion checks are expressed as parser constructs rather
+than hand-written branches. They get exit 2 for free that way.
+
+`--style` is deliberately NOT argparse `choices=`: that would exit 2, and
+SPEC R2 wants an unknown style to exit 1 with the valid names listed.
 
 The import order in `_cmd_render` is the point of the whole design: validation
 and style resolution both return before `rhymes.engine` is imported, so a
@@ -34,19 +39,37 @@ def build_parser() -> argparse.ArgumentParser:
 
     render = sub.add_parser("render", help="render a lyrics file to an mp3")
     render.add_argument("lyrics", type=Path, help="path to your lyrics .txt")
-    render.add_argument("-o", "--out", type=Path, default=None, help="output .mp3 path")
+    render.add_argument(
+        "-o", "--out", type=Path, default=None, help="output .mp3 path (default: beside the input)"
+    )
 
     # Mutually exclusive by construction, so "both given" exits 2 for free.
     style_group = render.add_mutually_exclusive_group()
     style_group.add_argument("--style", default=None, help="named preset (see `rhymes styles`)")
-    style_group.add_argument("--tags", default=None, help="raw comma-separated tag string")
+    style_group.add_argument(
+        "--tags", type=_nonempty_tags, default=None, help="raw comma-separated tag string"
+    )
 
-    render.add_argument("--seconds", type=_seconds, default=DEFAULT_SECONDS)
+    render.add_argument(
+        "--seconds",
+        type=_seconds,
+        default=DEFAULT_SECONDS,
+        help=f"length in seconds ({MIN_SECONDS}-{MAX_SECONDS}, default {DEFAULT_SECONDS})",
+    )
     render.add_argument("--temperature", type=_positive_float, default=0.9)
     render.add_argument("--topk", type=_positive_int, default=50)
     render.add_argument("--cfg-scale", dest="cfg_scale", type=_positive_float, default=1.5)
-    render.add_argument("--device", default=None, help="unsupported escape hatch")
+    render.add_argument(
+        "--device", default=None, help="unsupported escape hatch, e.g. cpu or cuda:1"
+    )
     return parser
+
+
+def _nonempty_tags(value: str) -> str:
+    cleaned = value.strip()
+    if not cleaned:
+        raise argparse.ArgumentTypeError("--tags cannot be empty")
+    return cleaned
 
 
 def _seconds(value: str) -> int:
@@ -89,9 +112,10 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _cmd_styles() -> int:
-    width = max(len(name) for name, _ in styles.describe())
-    for name, tags in styles.describe():
-        marker = " (default)" if name == styles.DEFAULT_STYLE else ""
+    table = styles.describe()
+    width = max(len(name) for name, _ in table)
+    for name, tags in table:
+        marker = "  (default)" if name == styles.DEFAULT_STYLE else ""
         print(f"{name.ljust(width)}  {tags}{marker}")
     return 0
 
@@ -106,9 +130,9 @@ def _cmd_render(args: argparse.Namespace) -> int:
         return _fail(f"cannot read {args.lyrics}: {exc.strerror or exc}")
 
     # Only now, once nothing cheap can still fail, does the heavy module load.
-    from rhymes.engine import EngineError, RenderRequest, render
+    from rhymes import engine
 
-    request = RenderRequest(
+    request = engine.RenderRequest(
         lyrics_text=lyrics.to_text(),
         tags=tags,
         out_path=args.out or args.lyrics.with_suffix(".mp3"),
@@ -119,8 +143,8 @@ def _cmd_render(args: argparse.Namespace) -> int:
         device=args.device,
     )
     try:
-        out = render(request)
-    except EngineError as exc:
+        out = engine.render(request)
+    except engine.EngineError as exc:
         return _fail(exc)
 
     print(out)

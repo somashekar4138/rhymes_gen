@@ -1,14 +1,15 @@
 """Kid-friendly style presets and tag resolution.
 
 Pure. The preset table is what lets someone pick a sound without learning
-HeartMuLa's tag vocabulary, and `DEFAULT_STYLE` being a member of it is the
-mechanical half of the child-safe-default prohibition.
+HeartMuLa's tag vocabulary. `DEFAULT_STYLE` being a member of this curated
+table is the mechanical half of the child-safe-default prohibition; the
+contents of the table itself carry a judgment review.
 """
 
 from __future__ import annotations
 
-# Comma-separated, no spaces around the commas - the format the model expects.
-# Insertion order is the display order; `rhymes styles` must be stable.
+# Comma-separated with no spaces around the commas -- the format the model
+# expects. Insertion order is display order: `rhymes styles` must be stable.
 PRESETS: dict[str, str] = {
     "nursery": "nursery rhyme,children,acoustic guitar,cheerful,simple melody,gentle",
     "lullaby": "lullaby,children,music box,soft,slow,soothing,gentle",
@@ -26,20 +27,18 @@ class StyleError(ValueError):
 def resolve_tags(style: str | None, tags: str | None) -> str:
     """Return the tag string to generate with.
 
-    `tags` wins when given; otherwise the named preset; otherwise the default.
-    The CLI makes the two mutually exclusive, so this never has to merge them.
+    Raw `tags` wins when given; otherwise the named preset; otherwise the
+    default. The CLI makes the two mutually exclusive, so this never merges.
     """
     if tags is not None:
-        cleaned = tags.strip()
-        if not cleaned:
-            raise StyleError("--tags was empty")
-        return cleaned
+        return tags
     if style is None:
         return PRESETS[DEFAULT_STYLE]
     return lookup(style)
 
 
 def lookup(style: str) -> str:
+    """Case- and whitespace-insensitive preset lookup."""
     try:
         return PRESETS[style.strip().lower()]
     except KeyError:
@@ -47,4 +46,5 @@ def lookup(style: str) -> str:
 
 
 def describe() -> list[tuple[str, str]]:
+    """Preset names with their expansions, in stable declared order."""
     return list(PRESETS.items())
