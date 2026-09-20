@@ -53,9 +53,42 @@ def preflight(device: str | None = None) -> str:
     return "cuda"
 
 
+# (repo_id, directory relative to the cache root). The directory names are
+# load-bearing: `from_pretrained` looks for exactly these. Module constants,
+# never assembled from user input.
+CHECKPOINTS: list[tuple[str, str]] = [
+    ("HeartMuLa/HeartMuLaGen", ""),
+    ("HeartMuLa/HeartMuLa-oss-3B-happy-new-year", "HeartMuLa-oss-3B"),
+    ("HeartMuLa/HeartCodec-oss-20260123", "HeartCodec-oss"),
+]
+
+DEFAULT_CACHE_DIR = Path.home() / ".cache" / "rhymes" / "ckpt"
+
+
+def cache_root(cache_dir: Path | None = None) -> Path:
+    if cache_dir is not None:
+        return Path(cache_dir)
+    env = os.environ.get("RHYMES_CACHE_DIR")
+    return Path(env) if env else DEFAULT_CACHE_DIR
+
+
 def ensure_checkpoints(cache_dir: Path | None = None) -> Path:
-    """Place the three HeartMuLa checkpoints. Filled in by plan 02 task 2."""
-    raise EngineError("checkpoint bootstrap not yet wired")
+    """Place the three HeartMuLa checkpoints (22.4 GB on a cold run).
+
+    Deliberately implements no downloader, no resume loop, no checksum pass and
+    no "have I already got this" short-circuit. `snapshot_download` already
+    caches, already writes partial files under a temporary name and already
+    resumes; a hand-rolled existence check is precisely how a truncated
+    checkpoint gets treated as complete. Delegation is the mitigation.
+    """
+    from huggingface_hub import snapshot_download
+
+    root = cache_root(cache_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    for repo_id, relative in CHECKPOINTS:
+        target = root / relative if relative else root
+        snapshot_download(repo_id=repo_id, local_dir=str(target))
+    return root
 
 
 @dataclass(frozen=True)
@@ -115,5 +148,30 @@ def _generate(
     tmp_out: Path,
     req: RenderRequest,
 ) -> None:
-    """The single seam the test suite mocks. Filled in by plan 02."""
-    raise EngineError("not yet wired")
+    """The single seam the test suite mocks.
+
+    heartlib and torch are imported inside this body. `lazy_load` is on because
+    a free T4 has 16 GB while the 3B weights in bf16 plus the fp32 codec are
+    ~14.5 GB before activations -- it is the pressure valve, not an option.
+    """
+    import torch
+    from heartlib import HeartMuLaGenPipeline
+
+    device = torch.device(preflight(req.device))
+    pipe = HeartMuLaGenPipeline.from_pretrained(
+        ckpt_root,
+        device={"mula": device, "codec": device},
+        dtype={"mula": torch.bfloat16, "codec": torch.float32},
+        version="3B",
+        lazy_load=True,
+    )
+    pipe(
+        # Upstream takes file *paths*, not strings, which is why `render`
+        # materializes both into its temporary directory.
+        {"lyrics": str(lyrics_path), "tags": str(tags_path)},
+        max_audio_length_ms=req.seconds * 1000,
+        save_path=str(tmp_out),
+        topk=req.topk,
+        temperature=req.temperature,
+        cfg_scale=req.cfg_scale,
+    )

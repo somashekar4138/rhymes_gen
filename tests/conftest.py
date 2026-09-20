@@ -109,3 +109,19 @@ def fake_torch(monkeypatch: pytest.MonkeyPatch):
         return mod
 
     return _make
+
+
+@pytest.fixture
+def download_recorder(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
+    """Record snapshot_download calls instead of fetching 22.4 GB."""
+    import huggingface_hub
+
+    calls: list[dict] = []
+
+    def fake(repo_id: str, local_dir: str, **kwargs: object) -> str:
+        calls.append({"repo_id": repo_id, "local_dir": str(local_dir), **kwargs})
+        Path(local_dir).mkdir(parents=True, exist_ok=True)
+        return str(local_dir)
+
+    monkeypatch.setattr(huggingface_hub, "snapshot_download", fake)
+    return calls
