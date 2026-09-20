@@ -23,9 +23,13 @@ it, set the runtime to a T4 GPU, and Run All. No cell needs editing.
 The first render downloads 22.4 GB of checkpoints (15.75 GB of 3B weights, 6.64 GB of
 codec). A second render in the same runtime reuses them.
 
-**Apple silicon is not supported.** `--device` exists as an escape hatch and will warn
-you it is unsupported. The model is CUDA-shaped and quoted at roughly realtime on a
-datacenter GPU; expect many multiples of that anywhere else.
+**Apple silicon is not supported.** `--device` exists as an escape hatch and warns you it
+is unsupported. Nothing in heartlib needs CUDA kernels, so it is not obviously impossible
+— but it is untested here, and two things make it hard: HeartMuLa is quoted at roughly
+realtime on a datacenter GPU, so expect many multiples of that; and `lazy_load` is forced
+off on non-CUDA devices (heartlib's unload path calls `torch.cuda` unconditionally), which
+means the 3B weights in bf16 plus the fp32 codec — about 14.5 GB — must all stay resident.
+
 
 ## Writing lyrics
 
@@ -82,6 +86,14 @@ pip install "rhymes[gpu] @ git+https://github.com/somashekar4138/rhymes_gen"   #
 ```
 
 Set `RHYMES_CACHE_DIR` to put checkpoints somewhere other than `~/.cache/rhymes/ckpt`.
+
+For development, including the tools the gate runs:
+
+```
+uv venv --python 3.12
+uv pip install -e ".[dev]"
+ruff check . && ruff format --check . && mypy . && pytest -q
+```
 
 ## Your lyrics stay put
 

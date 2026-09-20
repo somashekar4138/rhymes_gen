@@ -378,3 +378,42 @@ def test_preflight_runs_once_per_render(
     )
 
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    "device,expected_lazy",
+    [("cuda", True), ("cuda:1", True), ("cpu", False), ("mps", False)],
+)
+def test_lazy_load_is_off_on_non_cuda_devices(
+    fake_torch,
+    fake_heartlib: dict,
+    download_recorder: list[dict],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    device: str,
+    expected_lazy: bool,
+) -> None:
+    """heartlib's `_unload()` calls torch.cuda.memory_allocated/empty_cache
+    unconditionally, but only when lazy_load is True. On a non-CUDA device that
+    path raises, so the --device escape hatch could never have worked while we
+    passed lazy_load=True -- it advertised something that dies in heartlib.
+
+    lazy_load is the VRAM pressure valve on a 16 GB T4, so it stays on there.
+    """
+    fake_torch(cuda_available=True)
+    monkeypatch.setattr(engine, "preflight", lambda d=None: device, raising=True)
+
+    engine.render(
+        engine.RenderRequest(
+            lyrics_text="[Verse]\nhello\n",
+            tags="piano",
+            out_path=tmp_path / "s.mp3",
+            seconds=10,
+            temperature=0.9,
+            topk=50,
+            cfg_scale=1.5,
+            device=device,
+        )
+    )
+
+    assert fake_heartlib["lazy_load"] is expected_lazy

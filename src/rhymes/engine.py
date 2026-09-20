@@ -185,12 +185,22 @@ def _generate(
 
     # `device` is resolved by `render` and handed down, not re-resolved here.
     torch_device = torch.device(device)
+
+    # lazy_load is the VRAM pressure valve on a 16 GB T4 -- the 3B weights in
+    # bf16 plus the fp32 codec are ~14.5 GB before activations. But heartlib's
+    # `_unload()` calls torch.cuda.memory_allocated/empty_cache unconditionally
+    # whenever lazy_load is on, so on any non-CUDA device that path raises.
+    # Leaving it on made the --device escape hatch advertise something that
+    # dies inside heartlib. Off there instead, which needs the whole model
+    # resident -- part of why that path is unsupported rather than merely slow.
+    lazy_load = device.startswith("cuda")
+
     pipe = HeartMuLaGenPipeline.from_pretrained(
         ckpt_root,
         device={"mula": torch_device, "codec": torch_device},
         dtype={"mula": torch.bfloat16, "codec": torch.float32},
         version="3B",
-        lazy_load=True,
+        lazy_load=lazy_load,
     )
     pipe(
         # Upstream takes file *paths*, not strings, which is why `render`

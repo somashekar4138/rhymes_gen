@@ -17,6 +17,13 @@ dependencies = [
 gpu = [
     "heartlib @ git+https://github.com/HeartMuLa/heartlib",
 ]
+# The conformance gate's tools. Declared rather than installed by hand: the
+# gate reports SKIP when one is missing, and a SKIP is not a pass.
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+    "mypy>=1.11",
+]
 
 [project.scripts]
 rhymes = "rhymes.cli:main"
