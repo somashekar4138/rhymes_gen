@@ -11,3 +11,7 @@ build/
 # Generated audio and downloaded checkpoints (22.4 GB) never belong in git.
 *.mp3
 ckpt/
+
+# Forge chain state: kept local, not published.
+.planning/
+TODOS.md
