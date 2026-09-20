@@ -107,22 +107,25 @@ def _positive_int(value: str) -> int:
 
 
 MIN_PYTHON = (3, 10)
-MAX_PYTHON = (3, 12)
 
 
 def _check_interpreter(version: tuple[int, int]) -> None:
-    """Refuse an unsupported interpreter, naming the actual cause.
+    """Refuse an interpreter below the floor, naming the actual cause.
 
     Takes the version as a parameter so it is testable without a second
-    interpreter. A user who knows why can decide what to do; one who does not
-    files an issue.
+    interpreter.
+
+    There is deliberately no upper bound. An earlier version capped this at
+    3.12 on the reasoning that heartlib hard-pins numpy==2.0.2 and numpy
+    publishes no cp313 wheel. That inference was wrong: numpy 2.0.2 ships an
+    sdist, so pip builds it from source on 3.13. Colab moved to 3.13 and the
+    cap then blocked installation on the one runtime this tool supports.
     """
-    if MIN_PYTHON <= version <= MAX_PYTHON:
+    if version >= MIN_PYTHON:
         return
     raise RuntimeError(
-        f"Python {version[0]}.{version[1]} is not supported. rhymes needs "
-        f"{MIN_PYTHON[0]}.{MIN_PYTHON[1]}-{MAX_PYTHON[0]}.{MAX_PYTHON[1]} because heartlib "
-        "hard-pins numpy==2.0.2, which publishes no wheel for 3.13 or newer."
+        f"Python {version[0]}.{version[1]} is too old. rhymes needs "
+        f"{MIN_PYTHON[0]}.{MIN_PYTHON[1]} or newer."
     )
 
 

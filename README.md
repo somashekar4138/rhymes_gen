@@ -77,8 +77,9 @@ Exit codes: `0` success, `1` a validation or runtime failure with a one-line rea
 
 ## Install
 
-Python 3.10 to 3.12 only. heartlib hard-pins `numpy==2.0.2`, which publishes no wheel
-for 3.13.
+Python 3.10 or newer. On 3.13+ the install compiles `numpy==2.0.2` (a heartlib pin)
+from source, because that release has no 3.13 wheel — slower, but it works, which is what
+Colab does today.
 
 ```
 pip install git+https://github.com/somashekar4138/rhymes_gen

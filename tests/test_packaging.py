@@ -20,15 +20,25 @@ def pyproject() -> dict:
         return tomllib.load(fh)
 
 
-@pytest.mark.parametrize("version", [(3, 13), (3, 14), (3, 9)])
-def test_unsupported_interpreter_is_refused_with_the_reason(version: tuple[int, int]) -> None:
+@pytest.mark.parametrize("version", [(3, 9), (3, 8), (2, 7)])
+def test_interpreter_below_the_floor_is_refused_with_the_reason(
+    version: tuple[int, int],
+) -> None:
     with pytest.raises(RuntimeError) as exc:
         cli._check_interpreter(version)
 
     message = str(exc.value)
-    assert "numpy" in message
-    assert "2.0.2" in message
+    assert "3.10" in message
     assert f"{version[0]}.{version[1]}" in message
+
+
+@pytest.mark.parametrize("version", [(3, 13), (3, 14)])
+def test_newer_interpreters_are_allowed(version: tuple[int, int]) -> None:
+    """There is no upper bound. numpy 2.0.2 ships no cp313 wheel but does ship
+    an sdist, so pip compiles it from source -- which is what Colab, now on
+    3.13, actually does. An upper bound here blocked the only supported
+    runtime, which is the worst way for a constraint to be wrong."""
+    cli._check_interpreter(version)  # must not raise
 
 
 @pytest.mark.parametrize("version", [(3, 10), (3, 11), (3, 12)])
@@ -52,10 +62,11 @@ def test_interpreter_failure_renders_as_exit_1_not_a_traceback(
     assert len(err.strip().splitlines()) == 1
 
 
-def test_requires_python_upper_bound_is_declared() -> None:
-    """The upper bound is load-bearing, not tidiness: numpy 2.0.2 is a heartlib
-    hard pin and publishes no cp313 wheel."""
-    assert pyproject()["project"]["requires-python"] == ">=3.10,<3.13"
+def test_requires_python_floor_is_declared_with_no_upper_bound() -> None:
+    """3.10 is the floor our own syntax needs. There is deliberately NO upper
+    bound: heartlib declares >=3.9, and Colab (the supported runtime) is on
+    3.13, where numpy 2.0.2 builds from its sdist."""
+    assert pyproject()["project"]["requires-python"] == ">=3.10"
 
 
 def test_console_script_is_declared() -> None:

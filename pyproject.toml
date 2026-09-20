@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Turn a nursery rhyme you wrote into a sung audio track, for free, on a borrowed GPU"
 readme = "README.md"
 license = { text = "Apache-2.0" }
-requires-python = ">=3.10,<3.13"
+requires-python = ">=3.10"
 dependencies = [
     "huggingface_hub>=0.26",
 ]
