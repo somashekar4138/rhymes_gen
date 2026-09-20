@@ -229,3 +229,54 @@ def test_temporary_lyrics_file_is_gone_after_a_successful_render(
     engine.render(req)
 
     assert not Path(fake_heartlib["inputs"]["lyrics"]).exists()
+
+
+def test_torch_not_installed_at_all_is_reported_not_raised(
+    monkeypatch: pytest.MonkeyPatch, valid_lyrics_file: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Regression: found by running the real CLI on the dev Mac.
+
+    Every other test stubs torch INTO sys.modules, so none of them exercised
+    the case where torch is simply not installed -- which is every machine
+    without the `gpu` extra. There, `import torch` raises ModuleNotFoundError,
+    which is not an EngineError, so it escaped the CLI seam as a traceback.
+    SPEC R4 is specifically about the user never seeing one.
+    """
+    import sys
+
+    monkeypatch.setitem(sys.modules, "torch", None)
+
+    rc = cli.main(["render", str(valid_lyrics_file)])
+
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "Traceback" not in err
+    assert "Colab" in err
+
+
+def test_heartlib_not_installed_names_the_gpu_extra(
+    fake_torch, download_recorder: list[dict], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Same defect class as the torch case: the render wrapper already stops the
+    traceback, but 'generation failed: No module named heartlib' does not tell
+    anyone what to do about it."""
+    import sys
+
+    fake_torch(cuda_available=True)
+    monkeypatch.setitem(sys.modules, "heartlib", None)
+
+    req = engine.RenderRequest(
+        lyrics_text="[Verse]\nhello\n",
+        tags="piano",
+        out_path=tmp_path / "out.mp3",
+        seconds=10,
+        temperature=0.9,
+        topk=50,
+        cfg_scale=1.5,
+    )
+
+    with pytest.raises(engine.EngineError) as exc:
+        engine.render(req)
+
+    assert "heartlib" in str(exc.value)
+    assert "gpu" in str(exc.value)

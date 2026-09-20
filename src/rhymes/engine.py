@@ -27,9 +27,19 @@ def preflight(device: str | None = None) -> str:
     SPEC R3's fail-fast promise and a sub-second `rhymes styles`.
 
     Nothing escapes this function unwrapped: SPEC R4 is specifically about the
-    user never seeing a torch traceback.
+    user never seeing a torch traceback. That includes torch not being
+    installed at all, which is the default on any machine that skipped the
+    `gpu` extra.
     """
-    import torch
+    try:
+        import torch
+    except ImportError as exc:
+        raise EngineError(
+            "torch is not installed, so there is nothing to generate with. "
+            "Generation needs a GPU: open notebooks/rhymes_colab.ipynb in Google "
+            "Colab, set the runtime to a T4 GPU, and run it there. "
+            f"({exc})"
+        ) from exc
 
     if device is not None:
         try:
@@ -154,8 +164,15 @@ def _generate(
     a free T4 has 16 GB while the 3B weights in bf16 plus the fp32 codec are
     ~14.5 GB before activations -- it is the pressure valve, not an option.
     """
-    import torch
-    from heartlib import HeartMuLaGenPipeline
+    try:
+        import torch
+        from heartlib import HeartMuLaGenPipeline
+    except ImportError as exc:
+        raise EngineError(
+            "heartlib is not installed, so there is no model to sing with. "
+            'Install it with: pip install "rhymes[gpu] @ '
+            f'git+https://github.com/somashekar4138/rhymes_gen" ({exc})'
+        ) from exc
 
     device = torch.device(preflight(req.device))
     pipe = HeartMuLaGenPipeline.from_pretrained(
