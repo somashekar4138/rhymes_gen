@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -74,3 +77,75 @@ def test_notice_credits_heartlib() -> None:
 
     assert "heartlib" in notice
     assert "Apache" in notice
+
+
+# --- The Colab notebook -----------------------------------------------------
+
+NOTEBOOK = ROOT / "notebooks" / "rhymes_colab.ipynb"
+PLACEHOLDER_RE = re.compile(r"<[a-zA-Z_][a-zA-Z0-9_ -]*>")
+PLACEHOLDER_TOKENS = ("YOUR_", "TODO", "CHANGEME", "FIXME")
+
+
+def notebook() -> dict:
+    return json.loads(NOTEBOOK.read_text(encoding="utf-8"))
+
+
+def code_source() -> str:
+    return "\n".join(
+        "".join(cell["source"]) for cell in notebook()["cells"] if cell["cell_type"] == "code"
+    )
+
+
+def origin_owner_repo() -> str:
+    url = subprocess.run(
+        ["git", "remote", "get-url", "origin"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    return url.removesuffix(".git").split("github.com/")[-1]
+
+
+def test_notebook_is_valid_nbformat_4() -> None:
+    nb = notebook()
+
+    assert nb["nbformat"] == 4
+    assert nb["cells"]
+    assert all(cell["cell_type"] in {"code", "markdown"} for cell in nb["cells"])
+
+
+def test_notebook_carries_no_saved_output() -> None:
+    """A committed notebook with stale output is a diff hazard and a
+    misleading artifact."""
+    for cell in notebook()["cells"]:
+        if cell["cell_type"] == "code":
+            assert cell.get("outputs") == []
+            assert cell.get("execution_count") is None
+
+
+def test_notebook_drives_install_to_playback() -> None:
+    source = code_source()
+
+    assert "HeartMuLa/heartlib" in source
+    assert "[Verse]" in source
+    assert "rhymes render" in source
+    assert "Audio" in source
+
+
+def test_notebook_installs_this_package_from_its_real_origin() -> None:
+    """SPEC R8 claims Run All with no edits. A notebook that asks the reader to
+    substitute their own URL fails that, which is the whole of ENV-02."""
+    source = code_source()
+
+    assert origin_owner_repo() in source
+    assert "pip install" in source
+
+
+@pytest.mark.parametrize("token", PLACEHOLDER_TOKENS)
+def test_notebook_has_no_placeholder_tokens(token: str) -> None:
+    assert token not in NOTEBOOK.read_text(encoding="utf-8")
+
+
+def test_notebook_has_no_angle_bracket_placeholders() -> None:
+    assert not PLACEHOLDER_RE.findall(code_source())
